@@ -220,7 +220,7 @@ except ImportError:
 WORKSPACE_ID = "953790000013364003"
 DEVICES_VIEW_ID = "953790000054827102"
 
-ZOHO_ORG_ID = os.getenv("ZOHO_ORG_ID", "")
+ZOHO_ORG_ID = "67409019"
 ZOHO_CLIENT_ID = os.getenv("ZOHO_CLIENT_ID_ANALYTICS", "")
 ZOHO_CLIENT_SECRET = os.getenv("ZOHO_CLIENT_SECRET_ANALYTICS", "")
 ZOHO_REFRESH_TOKEN = os.getenv("ZOHO_CLIENT_REFRESH_TOKEN_ANALYTICS", "")
@@ -289,12 +289,12 @@ LOCAL_SNAPSHOT_CACHE = os.getenv(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_snapshot_cache.csv"))
 
 # SMTP email.
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USERNAME)
-EMAIL_TO = [addr.strip() for addr in os.getenv("EMAIL_TO", "").split(",") if addr.strip()]
+EMAIL_TO = "nandhinipv@zenduit.com"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
 log = logging.getLogger("geotab_plan_change_alert")
