@@ -1,0 +1,112 @@
+name: Geotab plan change alert
+
+# The Zoho Analytics view refreshes roughly every 3 hours, so checking on the
+# same cadence keeps pace without re-exporting the same data twice.
+#
+# Two things to know about GitHub's scheduler:
+#   * cron here is always UTC. '0 */3 * * *' fires at 00:00, 03:00 ... UTC,
+#     which is 05:30, 08:30 ... in Asia/Kolkata. Shift the minute/hour if you
+#     want it to land at particular local times.
+#   * scheduled runs are best-effort and get delayed when GitHub is busy —
+#     sometimes by 10+ minutes. That is fine for this job (it compares against
+#     whatever the last run stored, not against a clock) but it does mean you
+#     should not treat the timestamps as exact.
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  # Lets you run it by hand from the Actions tab, which is how you should do
+  # the first run and any debugging.
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to run'
+        required: true
+        default: 'normal'
+        type: choice
+        options:
+          - normal          # full cycle: export, diff, email if changed, upload
+          - dry-run         # export and diff, but send nothing and write nothing
+          - test-email      # send one sample alert, touch nothing else
+          - verify-folder   # check the WorkDrive destination resolves
+          - probe-upload    # find the largest request body this runner can send
+
+# Never let two runs overlap. Both would export the same table and race to
+# overwrite the same snapshot in WorkDrive, and the loser's diff would be
+# computed against a file the winner already replaced.
+concurrency:
+  group: geotab-plan-alert
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check-plans:
+    runs-on: ubuntu-latest
+    # The export is ~73 MB and the whole cycle normally finishes in 2-4
+    # minutes. 25 gives plenty of head room while still killing a hung run
+    # long before it can collide with the next scheduled one.
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the plan change check
+        env:
+          # ---- Zoho Analytics (the source table) ----
+          ZOHO_ORG_ID: ${{ secrets.ZOHO_ORG_ID }}
+          ZOHO_CLIENT_ID_ANALYTICS: ${{ secrets.ZOHO_CLIENT_ID_ANALYTICS }}
+          ZOHO_CLIENT_SECRET_ANALYTICS: ${{ secrets.ZOHO_CLIENT_SECRET_ANALYTICS }}
+          ZOHO_CLIENT_REFRESH_TOKEN_ANALYTICS: ${{ secrets.ZOHO_CLIENT_REFRESH_TOKEN_ANALYTICS }}
+
+          # ---- Zoho WorkDrive (where the history snapshot lives) ----
+          # This refresh token MUST include ZohoFiles.files.ALL as well as
+          # WorkDrive.files.ALL. A GitHub runner is wiped after every job, so
+          # unlike a desktop it has no local copy of last run's snapshot and
+          # has to DOWNLOAD it — and download.zoho.com is one of the only two
+          # WorkDrive endpoints that demands the legacy ZohoFiles scope.
+          # Without it every run reports "no changes" forever, silently.
+          ZOHO_CLIENT_ID_WORKDRIVE: ${{ secrets.ZOHO_CLIENT_ID_WORKDRIVE }}
+          ZOHO_CLIENT_SECRET_WORKDRIVE: ${{ secrets.ZOHO_CLIENT_SECRET_WORKDRIVE }}
+          ZOHO_WORKDRIVE_REFRESH_TOKEN: ${{ secrets.ZOHO_WORKDRIVE_REFRESH_TOKEN }}
+          # Not secret, but keep it configurable rather than hardcoded.
+          ZOHO_WORKDRIVE_FOLDER_ID: ${{ vars.ZOHO_WORKDRIVE_FOLDER_ID }}
+
+          # ---- Email ----
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.SMTP_USERNAME }}
+          EMAIL_TO: ${{ vars.EMAIL_TO }}
+        run: |
+          case "${{ github.event.inputs.mode || 'normal' }}" in
+            dry-run)       python Device_plan_geotab.py --dry-run --verbose ;;
+            test-email)    python Device_plan_geotab.py --test-email ;;
+            verify-folder) python Device_plan_geotab.py --verify-folder ;;
+            probe-upload)  python Device_plan_geotab.py --probe-upload-size ;;
+            *)             python Device_plan_geotab.py ;;
+          esac
+
+      - name: Keep the snapshot as an artifact
+        # Runs even when the step above failed, because a failed run's snapshot
+        # is exactly what you want to look at. Retention is short: this is a
+        # debugging aid, not the history store (WorkDrive is).
+        if: always() && hashFiles('last_snapshot_cache.csv') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-${{ github.run_number }}
+          path: last_snapshot_cache.csv
+          retention-days: 7
+          if-no-files-found: ignore
