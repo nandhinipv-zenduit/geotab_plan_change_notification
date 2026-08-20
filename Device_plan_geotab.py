@@ -217,15 +217,35 @@ except ImportError:
 # --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------
+def env(name: str, default: str = "") -> str:
+    """os.getenv, except a variable that is set-but-empty counts as unset.
+
+    This matters specifically on GitHub Actions. A workflow line like
+
+        ZOHO_ORG_ID: ${{ secrets.ZOHO_ORG_ID }}
+
+    still DEFINES the variable when that secret doesn't exist — it just
+    defines it as "". Plain env("ZOHO_ORG_ID", "67409019") then returns
+    "" rather than the default, so a value visibly present in this file looks
+    missing at runtime. Treating blank as absent makes the hardcoded defaults
+    behave the way anyone reading them would expect.
+
+    Values are stripped, which also absorbs the trailing newline that sneaks
+    into copy-pasted secrets.
+    """
+    value = os.getenv(name)
+    return default if value is None or not value.strip() else value.strip()
+
+
 WORKSPACE_ID = "953790000013364003"
 DEVICES_VIEW_ID = "953790000054827102"
 
-ZOHO_ORG_ID = "67409019"
-ZOHO_CLIENT_ID = os.getenv("ZOHO_CLIENT_ID_ANALYTICS", "")
-ZOHO_CLIENT_SECRET = os.getenv("ZOHO_CLIENT_SECRET_ANALYTICS", "")
-ZOHO_REFRESH_TOKEN = os.getenv("ZOHO_CLIENT_REFRESH_TOKEN_ANALYTICS", "")
-ZOHO_ACCOUNTS_DOMAIN = os.getenv("ZOHO_ACCOUNTS_DOMAIN", "accounts.zoho.com")
-ZOHO_ANALYTICS_DOMAIN = os.getenv("ZOHO_ANALYTICS_DOMAIN", "analyticsapi.zoho.com")
+ZOHO_ORG_ID = env("ZOHO_ORG_ID", "67409019")
+ZOHO_CLIENT_ID = env("ZOHO_CLIENT_ID_ANALYTICS", "")
+ZOHO_CLIENT_SECRET = env("ZOHO_CLIENT_SECRET_ANALYTICS", "")
+ZOHO_REFRESH_TOKEN = env("ZOHO_CLIENT_REFRESH_TOKEN_ANALYTICS", "")
+ZOHO_ACCOUNTS_DOMAIN = env("ZOHO_ACCOUNTS_DOMAIN", "accounts.zoho.com")
+ZOHO_ANALYTICS_DOMAIN = env("ZOHO_ANALYTICS_DOMAIN", "analyticsapi.zoho.com")
 
 # Column this script watches for changes.
 PLAN_COL = "activeDevicePlan_name"
@@ -245,24 +265,25 @@ CUSTOMER_COL_FUZZY = (["usercompany", "name"], ["partner"])
 SNAPSHOT_HEADER = ["serial", PLAN_COL, "userContact_userCompany_name"]
 
 # Zoho WorkDrive.
-WORKDRIVE_CLIENT_ID = os.getenv("ZOHO_CLIENT_ID_WORKDRIVE", "")
-WORKDRIVE_CLIENT_SECRET = os.getenv("ZOHO_CLIENT_SECRET_WORKDRIVE", "")
-WORKDRIVE_REFRESH_TOKEN = os.getenv("ZOHO_WORKDRIVE_REFRESH_TOKEN", "")
-WORKDRIVE_ACCOUNTS_DOMAIN = os.getenv("ZOHO_WORKDRIVE_ACCOUNTS_DOMAIN", ZOHO_ACCOUNTS_DOMAIN)
-WORKDRIVE_API_DOMAIN = os.getenv("ZOHO_WORKDRIVE_API_DOMAIN", "www.zohoapis.com")
-WORKDRIVE_DOWNLOAD_DOMAIN = os.getenv("ZOHO_WORKDRIVE_DOWNLOAD_DOMAIN", "download.zoho.com")
-WORKDRIVE_UPLOAD_DOMAIN = os.getenv("ZOHO_WORKDRIVE_UPLOAD_DOMAIN", "upload.zoho.com")
+WORKDRIVE_CLIENT_ID = env("ZOHO_CLIENT_ID_WORKDRIVE", "")
+WORKDRIVE_CLIENT_SECRET = env("ZOHO_CLIENT_SECRET_WORKDRIVE", "")
+WORKDRIVE_REFRESH_TOKEN = env("ZOHO_WORKDRIVE_REFRESH_TOKEN", "")
+WORKDRIVE_ACCOUNTS_DOMAIN = env("ZOHO_WORKDRIVE_ACCOUNTS_DOMAIN", ZOHO_ACCOUNTS_DOMAIN)
+WORKDRIVE_API_DOMAIN = env("ZOHO_WORKDRIVE_API_DOMAIN", "www.zohoapis.com")
+WORKDRIVE_DOWNLOAD_DOMAIN = env("ZOHO_WORKDRIVE_DOWNLOAD_DOMAIN", "download.zoho.com")
+WORKDRIVE_UPLOAD_DOMAIN = env("ZOHO_WORKDRIVE_UPLOAD_DOMAIN", "upload.zoho.com")
 # The TEAM id (8w1iccca22f6b282d4565b0689768dfb0e44f) used to be the fallback
 # here, which was the original bug: a team can't hold files. The fallback is
 # now the 'Automation' team folder, which is verified to resolve and list.
 # ZOHO_WORKDRIVE_FOLDER_ID in .env still overrides it.
-WORKDRIVE_TEAM_ID = os.getenv("ZOHO_WORKDRIVE_TEAM_ID", "8w1iccca22f6b282d4565b0689768dfb0e44f")
-WORKDRIVE_FOLDER_ID = os.getenv("ZOHO_WORKDRIVE_FOLDER_ID", "6cjtx4278b337cf294d9282e414d0f6777802")
-WORKDRIVE_FOLDER_ID_SOURCE = (".env / environment" if "ZOHO_WORKDRIVE_FOLDER_ID" in os.environ
+WORKDRIVE_TEAM_ID = env("ZOHO_WORKDRIVE_TEAM_ID", "8w1iccca22f6b282d4565b0689768dfb0e44f")
+WORKDRIVE_FOLDER_ID = env("ZOHO_WORKDRIVE_FOLDER_ID", "6cjtx4278b337cf294d9282e414d0f6777802")
+WORKDRIVE_FOLDER_ID_SOURCE = (".env / environment"
+                              if (os.getenv("ZOHO_WORKDRIVE_FOLDER_ID") or "").strip()
                               else "built-in default in this file")
-WORKDRIVE_REPORT_FILENAME = os.getenv(
+WORKDRIVE_REPORT_FILENAME = env(
     "WORKDRIVE_REPORT_FILENAME",
-    "Geotab_Devices_plan_snapshot.csv.gz" if os.getenv("GZIP_SNAPSHOT", "1").lower()
+    "Geotab_Devices_plan_snapshot.csv.gz" if env("GZIP_SNAPSHOT", "1").lower()
     not in ("0", "false", "no") else "Geotab_Devices_plan_snapshot.csv")
 
 # WorkDrive's single-shot upload endpoint handles up to 250 MB. Above that you
@@ -279,38 +300,54 @@ CHUNK_UPLOAD_MIN = 1024 ** 3
 # tiny POSTs answer instantly, so shrinking the request body ~5x (to ~0.7 MB)
 # is the most likely thing to get it through. Reading handles both forms by
 # sniffing the gzip magic bytes, so an existing plain-CSV snapshot still works.
-GZIP_SNAPSHOT = os.getenv("GZIP_SNAPSHOT", "1").lower() not in ("0", "false", "no")
+GZIP_SNAPSHOT = env("GZIP_SNAPSHOT", "1").lower() not in ("0", "false", "no")
 
 # The snapshot is written here just before the upload is attempted, so that a
 # network failure on the WorkDrive step doesn't throw away the Analytics pull
 # that produced it. `--retry-upload` pushes this file and nothing else.
-LOCAL_SNAPSHOT_CACHE = os.getenv(
+LOCAL_SNAPSHOT_CACHE = env(
     "LOCAL_SNAPSHOT_CACHE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_snapshot_cache.csv"))
 
 # SMTP email.
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USERNAME)
-EMAIL_TO = "nandhinipv@zenduit.com"
+SMTP_HOST = env("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(env("SMTP_PORT", "587"))
+SMTP_USERNAME = env("SMTP_USERNAME", "")
+SMTP_PASSWORD = env("SMTP_PASSWORD", "")
+EMAIL_FROM = env("EMAIL_FROM", SMTP_USERNAME)
+# Always a LIST, even when it comes from a hardcoded default. Assigning a bare
+# string here is a trap: ", ".join("a@b.com") yields "a, @, b, ., c, o, m", so
+# the To: header comes out as separated characters.
+EMAIL_TO = [addr.strip()
+            for addr in env("EMAIL_TO", "nandhinipv@zenduit.com").split(",")
+            if addr.strip()]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
 log = logging.getLogger("geotab_plan_change_alert")
 
 
-def require_env(*names: str) -> None:
-    """Report EVERY missing variable at once. No credentials are baked into
-    this file — it is meant to live in a repo — so a fresh clone needs all of
-    these set, and finding that out one variable per run is miserable."""
-    missing = [n for n in names if not os.getenv(n)]
+def check_config(*required: tuple) -> None:
+    """Validate the RESOLVED configuration values, not environment variable
+    names. Each item is (name, value).
+
+    This distinction caused a confusing GitHub Actions failure: three settings
+    (ZOHO_ORG_ID, SMTP_HOST, EMAIL_TO) were hardcoded as literals at the top of
+    this file, but the check called os.getenv() on their names — so it reported
+    them as "missing" while their values sat a few lines above. Checking the
+    value covers both ways of supplying it: environment/.env, or a literal
+    default in the code.
+    """
+    missing = [name for name, value in required if not value]
     if missing:
         sys.exit("ERROR: missing required configuration: " + ", ".join(missing) + "\n"
-                 "\nLocally: copy .env.example to .env and fill it in.\n"
-                 "On GitHub Actions: add them under Settings -> Secrets and variables ->\n"
-                 "Actions using these exact names, and check the workflow's env: block maps\n"
-                 "each one.")
+                 "\nEach of these can come from EITHER place:\n"
+                 "  * an environment variable of that name (locally: .env; on GitHub\n"
+                 "    Actions: a repository secret or variable mapped in the workflow's\n"
+                 "    env: block)\n"
+                 "  * a hardcoded default in the Configuration block at the top of this\n"
+                 "    file — fine for non-secrets like the org id, SMTP host or recipient\n"
+                 "    list; never for tokens, client secrets or passwords.\n")
+
 
 SCOPE_HINT = (
     "\n"
@@ -1236,22 +1273,29 @@ def main():
     # Check configuration before doing anything expensive. A scheduled run
     # should not discover that SMTP_PASSWORD is unset only after spending
     # three minutes pulling 73 MB out of Analytics.
-    WORKDRIVE_VARS = ("ZOHO_CLIENT_ID_WORKDRIVE", "ZOHO_CLIENT_SECRET_WORKDRIVE",
-                      "ZOHO_WORKDRIVE_REFRESH_TOKEN")
-    ANALYTICS_VARS = ("ZOHO_ORG_ID", "ZOHO_CLIENT_ID_ANALYTICS", "ZOHO_CLIENT_SECRET_ANALYTICS",
-                      "ZOHO_CLIENT_REFRESH_TOKEN_ANALYTICS")
-    EMAIL_VARS = ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "EMAIL_TO")
+    WORKDRIVE_CFG = (("ZOHO_CLIENT_ID_WORKDRIVE", WORKDRIVE_CLIENT_ID),
+                     ("ZOHO_CLIENT_SECRET_WORKDRIVE", WORKDRIVE_CLIENT_SECRET),
+                     ("ZOHO_WORKDRIVE_REFRESH_TOKEN", WORKDRIVE_REFRESH_TOKEN),
+                     ("ZOHO_WORKDRIVE_FOLDER_ID", WORKDRIVE_FOLDER_ID))
+    ANALYTICS_CFG = (("ZOHO_ORG_ID", ZOHO_ORG_ID),
+                     ("ZOHO_CLIENT_ID_ANALYTICS", ZOHO_CLIENT_ID),
+                     ("ZOHO_CLIENT_SECRET_ANALYTICS", ZOHO_CLIENT_SECRET),
+                     ("ZOHO_CLIENT_REFRESH_TOKEN_ANALYTICS", ZOHO_REFRESH_TOKEN))
+    EMAIL_CFG = (("SMTP_HOST", SMTP_HOST), ("SMTP_USERNAME", SMTP_USERNAME),
+                 ("SMTP_PASSWORD", SMTP_PASSWORD), ("EMAIL_FROM", EMAIL_FROM),
+                 ("EMAIL_TO", EMAIL_TO))
 
     if args.test_email:
-        require_env(*EMAIL_VARS)
-    elif args.setup_folder or args.verify_folder or args.probe_upload_size:
-        require_env(*WORKDRIVE_VARS)
-    elif args.retry_upload:
-        require_env(*WORKDRIVE_VARS)
+        check_config(*EMAIL_CFG)
+    elif args.setup_folder or args.verify_folder or args.probe_upload_size or args.retry_upload:
+        check_config(*WORKDRIVE_CFG)
     elif args.local_history:
-        require_env(*ANALYTICS_VARS, *EMAIL_VARS)
+        check_config(*ANALYTICS_CFG, *EMAIL_CFG)
+    elif args.dry_run:
+        # No email is sent and nothing is written, so SMTP config is irrelevant.
+        check_config(*ANALYTICS_CFG, *WORKDRIVE_CFG)
     else:
-        require_env(*ANALYTICS_VARS, *WORKDRIVE_VARS, *EMAIL_VARS)
+        check_config(*ANALYTICS_CFG, *WORKDRIVE_CFG, *EMAIL_CFG)
 
     if args.test_email:
         # The email path has never actually run — no plan change has happened
